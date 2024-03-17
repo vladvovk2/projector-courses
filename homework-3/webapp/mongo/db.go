@@ -1,5 +1,3 @@
-// mongo/db.go
-
 package mongo
 
 import (

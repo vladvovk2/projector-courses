@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
-	"webapp/mongo" // Import the mongo package
+	influxdb "webapp/influx"
+	"webapp/mongo"
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
@@ -27,6 +29,9 @@ type User struct {
 
 func main() {
 	// Initialize MongoDB connection
+	influxdb.Init()
+	defer influxdb.Close()
+
 	if err := mongo.Init(mongoURI); err != nil {
 		log.Fatal("Error initializing MongoDB:", err)
 	}
@@ -42,9 +47,10 @@ func main() {
 
 	// Set up HTTP server
 	router := mux.NewRouter()
-	router.HandleFunc("/users", getUsersHandler).Methods("GET")
-	router.HandleFunc("/users", postUsersHandler).Methods("POST")
-	router.HandleFunc("/users", deleteAllUsersHandler).Methods("DELETE")
+	router.HandleFunc("/users", metricsMiddleware(getUsersHandler)).Methods("GET")
+	router.HandleFunc("/users", metricsMiddleware(postUsersHandler)).Methods("POST")
+	router.HandleFunc("/users", metricsMiddleware(deleteAllUsersHandler)).Methods("DELETE")
+	router.HandleFunc("/health", metricsMiddleware(healthCheckHandler))
 
 	// Start HTTP server
 	log.Println("Server is running on http://localhost:8080")
@@ -115,6 +121,8 @@ func postUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	influxdb.WriteToInfluxDB("user_operations", map[string]string{"operation": "insert"}, map[string]interface{}{"count": len(users)})
+
 	// Create a response struct
 
 	response := struct {
@@ -152,6 +160,8 @@ func deleteAllUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	influxdb.WriteToInfluxDB("user_operations", map[string]string{"operation": "delete"}, map[string]interface{}{"count": result.DeletedCount})
+
 	// Create a response struct
 	response := struct {
 		Message      string `json:"message"`
@@ -167,5 +177,33 @@ func deleteAllUsersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error encoding response:", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+}
+
+func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	// Perform any necessary health checks, e.g., database connectivity, external dependencies, etc.
+	// Respond with a 200 OK if everything is healthy.
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "up"})
+}
+
+func metricsMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+
+		// Call the handler
+		next.ServeHTTP(w, r)
+
+		// Calculate request duration
+		duration := time.Now().Sub(startTime)
+
+		// Record the request count and duration in InfluxDB
+		influxdb.WriteToInfluxDB("webapp", map[string]string{
+			"method": r.Method,
+			"path":   r.URL.Path,
+		}, map[string]interface{}{
+			"count":    1,
+			"duration": duration.Seconds(),
+		})
 	}
 }

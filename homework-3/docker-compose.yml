@@ -27,7 +27,7 @@ services:
         restart: always
         depends_on:
             - influxdb
-            - mongo
+            - mongodb
         env_file:
             - .env
         networks: 
@@ -86,3 +86,8 @@ services:
 networks:
     backend:
     frontend:
+
+volumes:
+    influxdb:
+    grafana:
+    mongodb:
