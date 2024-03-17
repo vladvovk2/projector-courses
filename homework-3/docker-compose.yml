@@ -59,6 +59,14 @@ services:
         networks:
         - backend
         - frontend
+
+    webapp:
+        build: ./webapp
+        container_name: webapp
+        ports:
+        - "8080:8080"
+        networks:
+        - backend
 networks:
     backend:
     frontend:
