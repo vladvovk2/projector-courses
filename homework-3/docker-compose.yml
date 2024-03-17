@@ -67,6 +67,17 @@ services:
         - "8080:8080"
         networks:
         - backend
+
+    mongodb:
+        image: mongo:latest
+        container_name: mongodb
+        ports:
+        - "27017:27017"
+        volumes:
+        - ./mongodb/data:/data/db
+        restart: always
+        networks:
+        - backend
 networks:
     backend:
     frontend:
